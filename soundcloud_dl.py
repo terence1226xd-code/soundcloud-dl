@@ -20,11 +20,6 @@ def build_urls(args):
     return urls
 
 
-def download_track(url, output_dir):
-    """Placeholder for Task 4."""
-    pass
-
-
 def set_metadata(mp3_path, info_json_path):
     """Set ID3 metadata from yt-dlp .info.json file."""
     with open(info_json_path) as f:
