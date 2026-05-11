@@ -6,7 +6,7 @@ import pytest
 import yt_dlp
 from mutagen.id3 import ID3
 
-from soundcloud_dl import build_urls, set_metadata
+from soundcloud_dl import build_urls, download_track, set_metadata
 
 
 def make_args(**kwargs):
