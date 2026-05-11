@@ -38,3 +38,39 @@ def set_metadata(mp3_path, info_json_path):
 
     tags.save(mp3_path)
     Path(info_json_path).unlink()
+
+
+def download_track(url, output_dir, archive_path, allow_playlist=False):
+    downloaded_filename = []
+
+    def progress_hook(d):
+        if d['status'] == 'finished':
+            downloaded_filename.append(d['filename'])
+
+    opts = {
+        'format': 'bestaudio/best',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '0',
+        }],
+        'outtmpl': str(output_dir / '%(uploader)s - %(title)s.%(ext)s'),
+        'download_archive': str(archive_path),
+        'writeinfojson': True,
+        'noplaylist': not allow_playlist,
+        'quiet': True,
+        'no_warnings': True,
+        'progress_hooks': [progress_hook],
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([url])
+    except yt_dlp.utils.DownloadError as e:
+        return ('error', str(e))
+
+    if not downloaded_filename:
+        return ('skipped', None)
+
+    mp3_path = Path(downloaded_filename[0]).with_suffix('.mp3')
+    return ('downloaded', mp3_path)

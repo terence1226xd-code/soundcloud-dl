@@ -79,3 +79,105 @@ def test_set_metadata_missing_upload_date(tmp_path):
 
     tags = ID3(mp3)
     assert 'TDRC' not in tags
+
+
+def _make_ydl_mock(hook_payloads=None, raises=None):
+    """
+    Returns a side_effect for yt_dlp.YoutubeDL that:
+    - fires progress_hooks with hook_payloads during download(), or
+    - raises `raises` from download() if provided.
+    """
+    def factory(opts):
+        cm = MagicMock()
+        inner = MagicMock()
+
+        def fake_enter():
+            if hook_payloads is not None:
+                for payload in hook_payloads:
+                    for hook in opts.get('progress_hooks', []):
+                        hook(payload)
+            return inner
+
+        def fake_download(urls):
+            if raises:
+                raise raises
+            return 0
+
+        inner.download = fake_download
+        cm.__enter__ = MagicMock(side_effect=lambda: fake_enter())
+        cm.__exit__ = MagicMock(return_value=False)
+        return cm
+
+    return factory
+
+
+@patch('soundcloud_dl.yt_dlp.YoutubeDL')
+def test_download_track_downloaded(mock_ydl, tmp_path):
+    archive = tmp_path / 'downloaded.txt'
+    payload = {'status': 'finished', 'filename': str(tmp_path / 'Artist - Title.webm')}
+    mock_ydl.side_effect = _make_ydl_mock(hook_payloads=[payload])
+
+    status, path = download_track('https://soundcloud.com/a/t', tmp_path, archive)
+
+    assert status == 'downloaded'
+    assert path == tmp_path / 'Artist - Title.mp3'
+
+
+@patch('soundcloud_dl.yt_dlp.YoutubeDL')
+def test_download_track_skipped(mock_ydl, tmp_path):
+    archive = tmp_path / 'downloaded.txt'
+    mock_ydl.side_effect = _make_ydl_mock(hook_payloads=[])  # no hooks fired = skipped
+
+    status, path = download_track('https://soundcloud.com/a/t', tmp_path, archive)
+
+    assert status == 'skipped'
+    assert path is None
+
+
+@patch('soundcloud_dl.yt_dlp.YoutubeDL')
+def test_download_track_error(mock_ydl, tmp_path):
+    archive = tmp_path / 'downloaded.txt'
+    mock_ydl.side_effect = _make_ydl_mock(
+        raises=yt_dlp.utils.DownloadError('404 Not Found')
+    )
+
+    status, msg = download_track('https://soundcloud.com/a/t', tmp_path, archive)
+
+    assert status == 'error'
+    assert '404' in msg
+
+
+@patch('soundcloud_dl.yt_dlp.YoutubeDL')
+def test_download_track_no_playlist_by_default(mock_ydl, tmp_path):
+    archive = tmp_path / 'downloaded.txt'
+    captured = {}
+
+    def capture(opts):
+        captured.update(opts)
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=MagicMock(download=MagicMock(return_value=0)))
+        cm.__exit__ = MagicMock(return_value=False)
+        return cm
+
+    mock_ydl.side_effect = capture
+    download_track('https://soundcloud.com/a/t', tmp_path, archive)
+
+    assert captured.get('noplaylist') is True
+
+
+@patch('soundcloud_dl.yt_dlp.YoutubeDL')
+def test_download_track_playlist_allowed(mock_ydl, tmp_path):
+    archive = tmp_path / 'downloaded.txt'
+    captured = {}
+
+    def capture(opts):
+        captured.update(opts)
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=MagicMock(download=MagicMock(return_value=0)))
+        cm.__exit__ = MagicMock(return_value=False)
+        return cm
+
+    mock_ydl.side_effect = capture
+    download_track('https://soundcloud.com/a/t', tmp_path, archive, allow_playlist=True)
+
+    assert captured.get('noplaylist') is False
