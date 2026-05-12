@@ -5,6 +5,9 @@ from pathlib import Path
 
 import yt_dlp
 from mutagen.id3 import ID3, ID3NoHeaderError, TALB, TDRC, TIT2, TPE1
+from mutagen.mp3 import MP3 as MutagenMP3
+from pydub import AudioSegment
+from pydub.silence import detect_leading_silence
 from rich.console import Console
 
 console = Console()
@@ -38,6 +41,28 @@ def set_metadata(mp3_path, info_json_path):
 
     tags.save(mp3_path)
     Path(info_json_path).unlink()
+
+
+def trim_trailing_silence(mp3_path, silence_thresh=-50, min_silence_len=2000):
+    audio = AudioSegment.from_mp3(mp3_path)
+
+    trim_ms = detect_leading_silence(
+        audio.reverse(),
+        silence_threshold=silence_thresh,
+        chunk_size=10,
+    )
+
+    if trim_ms < min_silence_len or trim_ms >= len(audio):
+        return (False, 0.0)
+
+    try:
+        bitrate = MutagenMP3(mp3_path).info.bitrate // 1000
+    except Exception:
+        bitrate = 192
+
+    trimmed = audio[:-trim_ms]
+    trimmed.export(mp3_path, format='mp3', bitrate=f'{bitrate}k')
+    return (True, trim_ms / 1000.0)
 
 
 def download_track(url, output_dir, archive_path, allow_playlist=False):

@@ -236,3 +236,85 @@ def test_main_partial_failure_exits_zero(mock_set_metadata, mock_download_track,
                             'https://soundcloud.com/a/2',
                             '--output', str(tmp_path)]):
         main()  # must not raise — partial success = exit 0
+
+
+from pydub import AudioSegment
+from pydub.generators import Sine
+
+from soundklaut import trim_trailing_silence
+
+
+def _make_test_mp3(path, tone_ms=3000, silence_ms=0):
+    """Create a real MP3: sine tone followed by optional silence."""
+    audio = Sine(440).to_audio_segment(duration=tone_ms)
+    if silence_ms > 0:
+        audio = audio + AudioSegment.silent(duration=silence_ms)
+    audio.export(path, format='mp3', bitrate='128k')
+
+
+def test_trim_long_trailing_silence(tmp_path):
+    mp3 = tmp_path / 'track.mp3'
+    _make_test_mp3(mp3, tone_ms=3000, silence_ms=3000)
+
+    trimmed, secs = trim_trailing_silence(mp3, silence_thresh=-50, min_silence_len=2000)
+
+    assert trimmed is True
+    assert 2.5 <= secs <= 4.0  # ~3s; MP3 frame alignment allows small variance
+
+
+def test_trim_short_trailing_silence_not_trimmed(tmp_path):
+    mp3 = tmp_path / 'track.mp3'
+    _make_test_mp3(mp3, tone_ms=3000, silence_ms=500)  # 500ms < min_silence_len
+
+    trimmed, secs = trim_trailing_silence(mp3, silence_thresh=-50, min_silence_len=2000)
+
+    assert trimmed is False
+    assert secs == 0.0
+
+
+def test_trim_no_silence_not_trimmed(tmp_path):
+    mp3 = tmp_path / 'track.mp3'
+    _make_test_mp3(mp3, tone_ms=3000, silence_ms=0)
+
+    trimmed, secs = trim_trailing_silence(mp3, silence_thresh=-50, min_silence_len=2000)
+
+    assert trimmed is False
+    assert secs == 0.0
+
+
+def test_trim_middle_silence_not_trimmed(tmp_path):
+    """Silence in the middle should NOT be trimmed — track ends with a tone."""
+    mp3 = tmp_path / 'track.mp3'
+    tone1 = Sine(440).to_audio_segment(duration=2000)
+    silence = AudioSegment.silent(duration=3000)
+    tone2 = Sine(440).to_audio_segment(duration=2000)
+    (tone1 + silence + tone2).export(mp3, format='mp3', bitrate='128k')
+
+    trimmed, secs = trim_trailing_silence(mp3, silence_thresh=-50, min_silence_len=2000)
+
+    assert trimmed is False
+
+
+def test_trim_preserves_bitrate(tmp_path):
+    """After trimming, the file is re-exported with the original bitrate."""
+    from mutagen.mp3 import MP3 as MutagenMP3
+    mp3 = tmp_path / 'track.mp3'
+    _make_test_mp3(mp3, tone_ms=3000, silence_ms=3000)
+    original_bitrate = MutagenMP3(mp3).info.bitrate // 1000
+
+    trim_trailing_silence(mp3, silence_thresh=-50, min_silence_len=2000)
+
+    new_bitrate = MutagenMP3(mp3).info.bitrate // 1000
+    assert new_bitrate == original_bitrate
+
+
+def test_trim_file_shorter_after_trim(tmp_path):
+    """Trimmed file must be shorter than the original."""
+    mp3 = tmp_path / 'track.mp3'
+    _make_test_mp3(mp3, tone_ms=3000, silence_ms=3000)
+    original_len = len(AudioSegment.from_mp3(mp3))
+
+    trim_trailing_silence(mp3, silence_thresh=-50, min_silence_len=2000)
+
+    new_len = len(AudioSegment.from_mp3(mp3))
+    assert new_len < original_len
