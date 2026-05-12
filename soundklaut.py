@@ -109,13 +109,19 @@ def main():
             'Examples:\n'
             '  %(prog)s https://soundcloud.com/artist/track\n'
             '  %(prog)s url1 url2 --output ~/Music\n'
-            '  %(prog)s --playlist https://soundcloud.com/artist/sets/name'
+            '  %(prog)s --playlist https://soundcloud.com/artist/sets/name\n'
+            '  %(prog)s <url> --no-trim\n'
+            '  %(prog)s <url> --silence-threshold -40'
         ),
     )
     parser.add_argument('urls', nargs='*', metavar='URL', help='SoundCloud track URL(s)')
     parser.add_argument('--playlist', metavar='URL', help='SoundCloud playlist URL')
     parser.add_argument('--output', '-o', metavar='DIR', default='downloads',
                         help='Output directory (default: downloads)')
+    parser.add_argument('--no-trim', action='store_true',
+                        help='Disable trailing silence trimming')
+    parser.add_argument('--silence-threshold', type=float, default=-50.0, metavar='DB',
+                        help='Silence threshold in dBFS (default: -50)')
     args = parser.parse_args()
 
     urls = build_urls(args)
@@ -133,12 +139,27 @@ def main():
 
         if status == 'downloaded':
             info_json = result.with_suffix('.info.json')
+
+            trim_note = ''
+            if not args.no_trim:
+                try:
+                    trimmed, secs = trim_trailing_silence(
+                        result,
+                        silence_thresh=args.silence_threshold,
+                        min_silence_len=2000,
+                    )
+                    if trimmed:
+                        trim_note = f' [dim](trimmed {secs:.1f}s silence)[/]'
+                except Exception as e:
+                    console.print(f"  [yellow]⚠[/] trim failed: {e}")
+
             if info_json.exists():
                 try:
                     set_metadata(result, info_json)
                 except Exception as e:
                     console.print(f"  [yellow]⚠[/] {result.stem}  [dim](metadata failed: {e})[/]")
-            console.print(f"  [green]✓[/] {result.stem}")
+
+            console.print(f"  [green]✓[/] {result.stem}{trim_note}")
             downloaded += 1
         elif status == 'skipped':
             console.print(f"  [yellow]⏭[/] {url}  [dim](already downloaded)[/]")

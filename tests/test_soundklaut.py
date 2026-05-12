@@ -314,3 +314,68 @@ def test_trim_file_shorter_after_trim(tmp_path):
 
     new_len = len(AudioSegment.from_mp3(mp3))
     assert new_len < original_len
+
+
+@patch('soundklaut.trim_trailing_silence')
+@patch('soundklaut.download_track')
+@patch('soundklaut.set_metadata')
+def test_main_trim_called_with_defaults(mock_set_metadata, mock_download_track, mock_trim, tmp_path):
+    mp3 = tmp_path / 'Artist - Title.mp3'
+    mp3.write_bytes(b'')
+    mp3.with_suffix('.info.json').write_text('{}')
+    mock_download_track.return_value = ('downloaded', mp3)
+    mock_trim.return_value = (False, 0.0)
+
+    with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
+                            '--output', str(tmp_path)]):
+        main()
+
+    mock_trim.assert_called_once_with(mp3, silence_thresh=-50.0, min_silence_len=2000)
+
+
+@patch('soundklaut.trim_trailing_silence')
+@patch('soundklaut.download_track')
+@patch('soundklaut.set_metadata')
+def test_main_no_trim_flag_skips_trim(mock_set_metadata, mock_download_track, mock_trim, tmp_path):
+    mp3 = tmp_path / 'Artist - Title.mp3'
+    mp3.write_bytes(b'')
+    mp3.with_suffix('.info.json').write_text('{}')
+    mock_download_track.return_value = ('downloaded', mp3)
+
+    with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
+                            '--output', str(tmp_path), '--no-trim']):
+        main()
+
+    mock_trim.assert_not_called()
+
+
+@patch('soundklaut.trim_trailing_silence')
+@patch('soundklaut.download_track')
+@patch('soundklaut.set_metadata')
+def test_main_custom_silence_threshold(mock_set_metadata, mock_download_track, mock_trim, tmp_path):
+    mp3 = tmp_path / 'Artist - Title.mp3'
+    mp3.write_bytes(b'')
+    mp3.with_suffix('.info.json').write_text('{}')
+    mock_download_track.return_value = ('downloaded', mp3)
+    mock_trim.return_value = (False, 0.0)
+
+    with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
+                            '--output', str(tmp_path), '--silence-threshold', '-40']):
+        main()
+
+    mock_trim.assert_called_once_with(mp3, silence_thresh=-40.0, min_silence_len=2000)
+
+
+@patch('soundklaut.trim_trailing_silence')
+@patch('soundklaut.download_track')
+@patch('soundklaut.set_metadata')
+def test_main_trim_exception_does_not_crash(mock_set_metadata, mock_download_track, mock_trim, tmp_path):
+    mp3 = tmp_path / 'Artist - Title.mp3'
+    mp3.write_bytes(b'')
+    mp3.with_suffix('.info.json').write_text('{}')
+    mock_download_track.return_value = ('downloaded', mp3)
+    mock_trim.side_effect = Exception('pydub decode error')
+
+    with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
+                            '--output', str(tmp_path)]):
+        main()  # must not raise; track still counts as downloaded
