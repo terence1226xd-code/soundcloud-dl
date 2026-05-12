@@ -378,4 +378,6 @@ def test_main_trim_exception_does_not_crash(mock_set_metadata, mock_download_tra
 
     with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path)]):
-        main()  # must not raise; track still counts as downloaded
+        main()  # must not raise
+
+    mock_set_metadata.assert_called_once()  # trim failed but download path continued
