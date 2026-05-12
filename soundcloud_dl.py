@@ -74,3 +74,58 @@ def download_track(url, output_dir, archive_path, allow_playlist=False):
 
     mp3_path = Path(downloaded_filename[0]).with_suffix('.mp3')
     return ('downloaded', mp3_path)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Download SoundCloud tracks as MP3',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            'Examples:\n'
+            '  %(prog)s https://soundcloud.com/artist/track\n'
+            '  %(prog)s url1 url2 --output ~/Music\n'
+            '  %(prog)s --playlist https://soundcloud.com/artist/sets/name'
+        ),
+    )
+    parser.add_argument('urls', nargs='*', metavar='URL', help='SoundCloud track URL(s)')
+    parser.add_argument('--playlist', metavar='URL', help='SoundCloud playlist URL')
+    parser.add_argument('--output', '-o', metavar='DIR', default='downloads',
+                        help='Output directory (default: downloads)')
+    args = parser.parse_args()
+
+    urls = build_urls(args)
+    output_dir = Path(args.output).expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = output_dir / 'downloaded.txt'
+    allow_playlist = args.playlist is not None
+
+    downloaded = skipped = failed = 0
+
+    console.print(f"[bold]Downloading {len(urls)} URL(s) → {output_dir}[/]\n")
+
+    for url in urls:
+        status, result = download_track(url, output_dir, archive_path, allow_playlist)
+
+        if status == 'downloaded':
+            info_json = result.with_suffix('.info.json')
+            if info_json.exists():
+                set_metadata(result, info_json)
+            console.print(f"  [green]✓[/] {result.stem}")
+            downloaded += 1
+        elif status == 'skipped':
+            console.print(f"  [yellow]⏭[/] {url}  [dim](already downloaded)[/]")
+            skipped += 1
+        else:
+            console.print(f"  [red]✗[/] {url}  [dim]{result}[/]")
+            failed += 1
+
+    console.print(
+        f"\n[bold]Done:[/] {downloaded} downloaded, {skipped} skipped, {failed} failed"
+    )
+
+    if downloaded == 0 and failed > 0:
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

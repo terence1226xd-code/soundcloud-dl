@@ -181,3 +181,66 @@ def test_download_track_playlist_allowed(mock_ydl, tmp_path):
     download_track('https://soundcloud.com/a/t', tmp_path, archive, allow_playlist=True)
 
     assert captured.get('noplaylist') is False
+
+
+@patch('soundcloud_dl.download_track')
+@patch('soundcloud_dl.set_metadata')
+def test_main_calls_set_metadata_on_download(mock_set_metadata, mock_download_track, tmp_path):
+    mp3 = tmp_path / 'Artist - Title.mp3'
+    mp3.write_bytes(b'')
+    info_json = mp3.with_suffix('.info.json')
+    info_json.write_text('{}')
+
+    mock_download_track.return_value = ('downloaded', mp3)
+
+    with patch('sys.argv', ['soundcloud_dl.py', 'https://soundcloud.com/a/t',
+                            '--output', str(tmp_path)]):
+        from soundcloud_dl import main
+        main()
+
+    mock_set_metadata.assert_called_once_with(mp3, mp3.with_suffix('.info.json'))
+
+
+@patch('soundcloud_dl.download_track')
+@patch('soundcloud_dl.set_metadata')
+def test_main_skipped_does_not_call_set_metadata(mock_set_metadata, mock_download_track, tmp_path):
+    mock_download_track.return_value = ('skipped', None)
+
+    with patch('sys.argv', ['soundcloud_dl.py', 'https://soundcloud.com/a/t',
+                            '--output', str(tmp_path)]):
+        from soundcloud_dl import main
+        main()
+
+    mock_set_metadata.assert_not_called()
+
+
+@patch('soundcloud_dl.download_track')
+def test_main_all_failed_exits_one(mock_download_track, tmp_path):
+    mock_download_track.return_value = ('error', 'HTTP 404')
+
+    with patch('sys.argv', ['soundcloud_dl.py', 'https://soundcloud.com/a/t',
+                            '--output', str(tmp_path)]):
+        from soundcloud_dl import main
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+
+
+@patch('soundcloud_dl.download_track')
+@patch('soundcloud_dl.set_metadata')
+def test_main_partial_failure_exits_zero(mock_set_metadata, mock_download_track, tmp_path):
+    mp3 = tmp_path / 'Artist - Title.mp3'
+    mp3.write_bytes(b'')
+    mp3.with_suffix('.info.json').write_text('{}')
+
+    mock_download_track.side_effect = [
+        ('downloaded', mp3),
+        ('error', 'HTTP 404'),
+    ]
+
+    with patch('sys.argv', ['soundcloud_dl.py',
+                            'https://soundcloud.com/a/1',
+                            'https://soundcloud.com/a/2',
+                            '--output', str(tmp_path)]):
+        from soundcloud_dl import main
+        main()  # must not raise — partial success = exit 0
