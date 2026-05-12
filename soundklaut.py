@@ -65,10 +65,20 @@ def trim_trailing_silence(mp3_path, silence_thresh=-50, min_silence_len=2000):
     return (True, trim_ms / 1000.0)
 
 
-def download_track(url, output_dir, archive_path, allow_playlist=False):
+def download_track(url, output_dir, archive_path, allow_playlist=False, progress_callback=None):
     downloaded_filename = []
+    total_bytes_seen = [None]
 
     def progress_hook(d):
+        if d['status'] == 'downloading' and progress_callback:
+            downloaded = int(d.get('downloaded_bytes') or 0)
+            total = d.get('total_bytes') or d.get('total_bytes_estimate')
+            total_bytes_seen[0] = total
+            progress_callback(
+                downloaded_bytes=downloaded,
+                total_bytes=total,
+                filename=d.get('filename', ''),
+            )
         if d['status'] == 'finished':
             downloaded_filename.append(d['filename'])
 
@@ -92,13 +102,13 @@ def download_track(url, output_dir, archive_path, allow_playlist=False):
         with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.download([url])
     except yt_dlp.utils.DownloadError as e:
-        return ('error', str(e))
+        return ('error', str(e), None)
 
     if not downloaded_filename:
-        return ('skipped', None)
+        return ('skipped', None, None)
 
     mp3_path = Path(downloaded_filename[0]).with_suffix('.mp3')
-    return ('downloaded', mp3_path)
+    return ('downloaded', mp3_path, total_bytes_seen[0])
 
 
 def main():
@@ -135,7 +145,7 @@ def main():
     console.print(f"[bold]Downloading {len(urls)} URL(s) → {output_dir}[/]\n")
 
     for url in urls:
-        status, result = download_track(url, output_dir, archive_path, allow_playlist)
+        status, result, _total_bytes = download_track(url, output_dir, archive_path, allow_playlist)
 
         if status == 'downloaded':
             info_json = result.with_suffix('.info.json')

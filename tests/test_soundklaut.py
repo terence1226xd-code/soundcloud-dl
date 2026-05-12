@@ -115,7 +115,7 @@ def test_download_track_downloaded(mock_ydl, tmp_path):
     payload = {'status': 'finished', 'filename': str(tmp_path / 'Artist - Title.webm')}
     mock_ydl.side_effect = _make_ydl_mock(hook_payloads=[payload])
 
-    status, path = download_track('https://soundcloud.com/a/t', tmp_path, archive)
+    status, path, total = download_track('https://soundcloud.com/a/t', tmp_path, archive)
 
     assert status == 'downloaded'
     assert path == tmp_path / 'Artist - Title.mp3'
@@ -126,7 +126,7 @@ def test_download_track_skipped(mock_ydl, tmp_path):
     archive = tmp_path / 'downloaded.txt'
     mock_ydl.side_effect = _make_ydl_mock(hook_payloads=[])  # no hooks fired = skipped
 
-    status, path = download_track('https://soundcloud.com/a/t', tmp_path, archive)
+    status, path, total = download_track('https://soundcloud.com/a/t', tmp_path, archive)
 
     assert status == 'skipped'
     assert path is None
@@ -139,7 +139,7 @@ def test_download_track_error(mock_ydl, tmp_path):
         raises=yt_dlp.utils.DownloadError('404 Not Found')
     )
 
-    status, msg = download_track('https://soundcloud.com/a/t', tmp_path, archive)
+    status, msg, total = download_track('https://soundcloud.com/a/t', tmp_path, archive)
 
     assert status == 'error'
     assert '404' in msg
@@ -181,6 +181,50 @@ def test_download_track_playlist_allowed(mock_ydl, tmp_path):
     assert captured.get('noplaylist') is False
 
 
+@patch('soundklaut.yt_dlp.YoutubeDL')
+def test_download_track_progress_callback_called(mock_ydl, tmp_path):
+    archive = tmp_path / 'downloaded.txt'
+
+    def factory(opts):
+        cm = MagicMock()
+        inner = MagicMock()
+
+        def fake_download(urls):
+            for hook in opts.get('progress_hooks', []):
+                hook({
+                    'status': 'downloading',
+                    'downloaded_bytes': 512000,
+                    'total_bytes': 1024000,
+                    'filename': str(tmp_path / 'Artist - Title.webm'),
+                })
+                hook({
+                    'status': 'finished',
+                    'filename': str(tmp_path / 'Artist - Title.webm'),
+                })
+            return 0
+
+        inner.download = fake_download
+        cm.__enter__ = MagicMock(return_value=inner)
+        cm.__exit__ = MagicMock(return_value=False)
+        return cm
+
+    mock_ydl.side_effect = factory
+
+    calls = []
+    def on_progress(downloaded_bytes, total_bytes, filename):
+        calls.append((downloaded_bytes, total_bytes))
+
+    status, path, total = download_track(
+        'https://soundcloud.com/a/t', tmp_path, archive,
+        progress_callback=on_progress,
+    )
+
+    assert status == 'downloaded'
+    assert len(calls) == 1
+    assert calls[0] == (512000, 1024000)
+    assert total == 1024000
+
+
 @patch('soundklaut.download_track')
 @patch('soundklaut.set_metadata')
 def test_main_calls_set_metadata_on_download(mock_set_metadata, mock_download_track, tmp_path):
@@ -189,7 +233,7 @@ def test_main_calls_set_metadata_on_download(mock_set_metadata, mock_download_tr
     info_json = mp3.with_suffix('.info.json')
     info_json.write_text('{}')
 
-    mock_download_track.return_value = ('downloaded', mp3)
+    mock_download_track.return_value = ('downloaded', mp3, None)
 
     with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path)]):
@@ -201,7 +245,7 @@ def test_main_calls_set_metadata_on_download(mock_set_metadata, mock_download_tr
 @patch('soundklaut.download_track')
 @patch('soundklaut.set_metadata')
 def test_main_skipped_does_not_call_set_metadata(mock_set_metadata, mock_download_track, tmp_path):
-    mock_download_track.return_value = ('skipped', None)
+    mock_download_track.return_value = ('skipped', None, None)
 
     with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path)]):
@@ -212,7 +256,7 @@ def test_main_skipped_does_not_call_set_metadata(mock_set_metadata, mock_downloa
 
 @patch('soundklaut.download_track')
 def test_main_all_failed_exits_one(mock_download_track, tmp_path):
-    mock_download_track.return_value = ('error', 'HTTP 404')
+    mock_download_track.return_value = ('error', 'HTTP 404', None)
 
     with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path)]):
@@ -229,8 +273,8 @@ def test_main_partial_failure_exits_zero(mock_set_metadata, mock_download_track,
     mp3.with_suffix('.info.json').write_text('{}')
 
     mock_download_track.side_effect = [
-        ('downloaded', mp3),
-        ('error', 'HTTP 404'),
+        ('downloaded', mp3, None),
+        ('error', 'HTTP 404', None),
     ]
 
     with patch('sys.argv', ['soundklaut.py',
@@ -323,7 +367,7 @@ def test_main_trim_called_with_defaults(mock_set_metadata, mock_download_track, 
     mp3 = tmp_path / 'Artist - Title.mp3'
     mp3.write_bytes(b'')
     mp3.with_suffix('.info.json').write_text('{}')
-    mock_download_track.return_value = ('downloaded', mp3)
+    mock_download_track.return_value = ('downloaded', mp3, None)
     mock_trim.return_value = (False, 0.0)
 
     with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
@@ -340,7 +384,7 @@ def test_main_no_trim_flag_skips_trim(mock_set_metadata, mock_download_track, mo
     mp3 = tmp_path / 'Artist - Title.mp3'
     mp3.write_bytes(b'')
     mp3.with_suffix('.info.json').write_text('{}')
-    mock_download_track.return_value = ('downloaded', mp3)
+    mock_download_track.return_value = ('downloaded', mp3, None)
 
     with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path), '--no-trim']):
@@ -356,7 +400,7 @@ def test_main_custom_silence_threshold(mock_set_metadata, mock_download_track, m
     mp3 = tmp_path / 'Artist - Title.mp3'
     mp3.write_bytes(b'')
     mp3.with_suffix('.info.json').write_text('{}')
-    mock_download_track.return_value = ('downloaded', mp3)
+    mock_download_track.return_value = ('downloaded', mp3, None)
     mock_trim.return_value = (False, 0.0)
 
     with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
@@ -373,7 +417,7 @@ def test_main_trim_exception_does_not_crash(mock_set_metadata, mock_download_tra
     mp3 = tmp_path / 'Artist - Title.mp3'
     mp3.write_bytes(b'')
     mp3.with_suffix('.info.json').write_text('{}')
-    mock_download_track.return_value = ('downloaded', mp3)
+    mock_download_track.return_value = ('downloaded', mp3, None)
     mock_trim.side_effect = Exception('pydub decode error')
 
     with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
