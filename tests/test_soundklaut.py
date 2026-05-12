@@ -5,8 +5,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yt_dlp
 from mutagen.id3 import ID3
+from pydub import AudioSegment
+from pydub.generators import Sine
 
-from soundklaut import build_urls, download_track, main, set_metadata
+from soundklaut import build_urls, download_track, main, set_metadata, trim_trailing_silence
 
 
 def make_args(**kwargs):
@@ -236,12 +238,6 @@ def test_main_partial_failure_exits_zero(mock_set_metadata, mock_download_track,
                             'https://soundcloud.com/a/2',
                             '--output', str(tmp_path)]):
         main()  # must not raise — partial success = exit 0
-
-
-from pydub import AudioSegment
-from pydub.generators import Sine
-
-from soundklaut import trim_trailing_silence
 
 
 def _make_test_mp3(path, tone_ms=3000, silence_ms=0):
