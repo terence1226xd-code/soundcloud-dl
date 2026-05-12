@@ -131,11 +131,11 @@ def _short_url(url):
 def _format_bytes(n):
     if n is None:
         return ''
-    for unit in ('B', 'KB', 'MB', 'GB'):
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
         if n < 1024:
             return f'{n:.1f} {unit}'
         n /= 1024
-    return f'{n:.1f} GB'
+    return f'{n:.1f} TB'
 
 
 def main():
