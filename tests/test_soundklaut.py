@@ -6,7 +6,7 @@ import pytest
 import yt_dlp
 from mutagen.id3 import ID3
 
-from soundcloud_dl import build_urls, download_track, main, set_metadata
+from soundklaut import build_urls, download_track, main, set_metadata
 
 
 def make_args(**kwargs):
@@ -107,7 +107,7 @@ def _make_ydl_mock(hook_payloads=None, raises=None):
     return factory
 
 
-@patch('soundcloud_dl.yt_dlp.YoutubeDL')
+@patch('soundklaut.yt_dlp.YoutubeDL')
 def test_download_track_downloaded(mock_ydl, tmp_path):
     archive = tmp_path / 'downloaded.txt'
     payload = {'status': 'finished', 'filename': str(tmp_path / 'Artist - Title.webm')}
@@ -119,7 +119,7 @@ def test_download_track_downloaded(mock_ydl, tmp_path):
     assert path == tmp_path / 'Artist - Title.mp3'
 
 
-@patch('soundcloud_dl.yt_dlp.YoutubeDL')
+@patch('soundklaut.yt_dlp.YoutubeDL')
 def test_download_track_skipped(mock_ydl, tmp_path):
     archive = tmp_path / 'downloaded.txt'
     mock_ydl.side_effect = _make_ydl_mock(hook_payloads=[])  # no hooks fired = skipped
@@ -130,7 +130,7 @@ def test_download_track_skipped(mock_ydl, tmp_path):
     assert path is None
 
 
-@patch('soundcloud_dl.yt_dlp.YoutubeDL')
+@patch('soundklaut.yt_dlp.YoutubeDL')
 def test_download_track_error(mock_ydl, tmp_path):
     archive = tmp_path / 'downloaded.txt'
     mock_ydl.side_effect = _make_ydl_mock(
@@ -143,7 +143,7 @@ def test_download_track_error(mock_ydl, tmp_path):
     assert '404' in msg
 
 
-@patch('soundcloud_dl.yt_dlp.YoutubeDL')
+@patch('soundklaut.yt_dlp.YoutubeDL')
 def test_download_track_no_playlist_by_default(mock_ydl, tmp_path):
     archive = tmp_path / 'downloaded.txt'
     captured = {}
@@ -161,7 +161,7 @@ def test_download_track_no_playlist_by_default(mock_ydl, tmp_path):
     assert captured.get('noplaylist') is True
 
 
-@patch('soundcloud_dl.yt_dlp.YoutubeDL')
+@patch('soundklaut.yt_dlp.YoutubeDL')
 def test_download_track_playlist_allowed(mock_ydl, tmp_path):
     archive = tmp_path / 'downloaded.txt'
     captured = {}
@@ -179,8 +179,8 @@ def test_download_track_playlist_allowed(mock_ydl, tmp_path):
     assert captured.get('noplaylist') is False
 
 
-@patch('soundcloud_dl.download_track')
-@patch('soundcloud_dl.set_metadata')
+@patch('soundklaut.download_track')
+@patch('soundklaut.set_metadata')
 def test_main_calls_set_metadata_on_download(mock_set_metadata, mock_download_track, tmp_path):
     mp3 = tmp_path / 'Artist - Title.mp3'
     mp3.write_bytes(b'')
@@ -189,38 +189,38 @@ def test_main_calls_set_metadata_on_download(mock_set_metadata, mock_download_tr
 
     mock_download_track.return_value = ('downloaded', mp3)
 
-    with patch('sys.argv', ['soundcloud_dl.py', 'https://soundcloud.com/a/t',
+    with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path)]):
         main()
 
     mock_set_metadata.assert_called_once_with(mp3, mp3.with_suffix('.info.json'))
 
 
-@patch('soundcloud_dl.download_track')
-@patch('soundcloud_dl.set_metadata')
+@patch('soundklaut.download_track')
+@patch('soundklaut.set_metadata')
 def test_main_skipped_does_not_call_set_metadata(mock_set_metadata, mock_download_track, tmp_path):
     mock_download_track.return_value = ('skipped', None)
 
-    with patch('sys.argv', ['soundcloud_dl.py', 'https://soundcloud.com/a/t',
+    with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path)]):
         main()
 
     mock_set_metadata.assert_not_called()
 
 
-@patch('soundcloud_dl.download_track')
+@patch('soundklaut.download_track')
 def test_main_all_failed_exits_one(mock_download_track, tmp_path):
     mock_download_track.return_value = ('error', 'HTTP 404')
 
-    with patch('sys.argv', ['soundcloud_dl.py', 'https://soundcloud.com/a/t',
+    with patch('sys.argv', ['soundklaut.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path)]):
         with pytest.raises(SystemExit) as exc:
             main()
         assert exc.value.code == 1
 
 
-@patch('soundcloud_dl.download_track')
-@patch('soundcloud_dl.set_metadata')
+@patch('soundklaut.download_track')
+@patch('soundklaut.set_metadata')
 def test_main_partial_failure_exits_zero(mock_set_metadata, mock_download_track, tmp_path):
     mp3 = tmp_path / 'Artist - Title.mp3'
     mp3.write_bytes(b'')
@@ -231,7 +231,7 @@ def test_main_partial_failure_exits_zero(mock_set_metadata, mock_download_track,
         ('error', 'HTTP 404'),
     ]
 
-    with patch('sys.argv', ['soundcloud_dl.py',
+    with patch('sys.argv', ['soundklaut.py',
                             'https://soundcloud.com/a/1',
                             'https://soundcloud.com/a/2',
                             '--output', str(tmp_path)]):
