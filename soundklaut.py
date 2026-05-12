@@ -71,14 +71,17 @@ def download_track(url, output_dir, archive_path, allow_playlist=False, progress
 
     def progress_hook(d):
         if d['status'] == 'downloading' and progress_callback:
-            downloaded = int(d.get('downloaded_bytes') or 0)
-            total = d.get('total_bytes') or d.get('total_bytes_estimate')
-            total_bytes_seen[0] = total
-            progress_callback(
-                downloaded_bytes=downloaded,
-                total_bytes=total,
-                filename=d.get('filename', ''),
-            )
+            try:
+                downloaded = int(d.get('downloaded_bytes') or 0)
+                total = d.get('total_bytes') or d.get('total_bytes_estimate')
+                total_bytes_seen[0] = total
+                progress_callback(
+                    downloaded_bytes=downloaded,
+                    total_bytes=total,
+                    filename=d.get('filename', ''),
+                )
+            except (TypeError, ValueError):
+                pass
         if d['status'] == 'finished':
             downloaded_filename.append(d['filename'])
 
