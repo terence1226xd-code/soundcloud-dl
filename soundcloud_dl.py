@@ -109,7 +109,10 @@ def main():
         if status == 'downloaded':
             info_json = result.with_suffix('.info.json')
             if info_json.exists():
-                set_metadata(result, info_json)
+                try:
+                    set_metadata(result, info_json)
+                except Exception as e:
+                    console.print(f"  [yellow]⚠[/] {result.stem}  [dim](metadata failed: {e})[/]")
             console.print(f"  [green]✓[/] {result.stem}")
             downloaded += 1
         elif status == 'skipped':

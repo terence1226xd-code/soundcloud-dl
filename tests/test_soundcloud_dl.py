@@ -6,7 +6,7 @@ import pytest
 import yt_dlp
 from mutagen.id3 import ID3
 
-from soundcloud_dl import build_urls, download_track, set_metadata
+from soundcloud_dl import build_urls, download_track, main, set_metadata
 
 
 def make_args(**kwargs):
@@ -91,20 +91,16 @@ def _make_ydl_mock(hook_payloads=None, raises=None):
         cm = MagicMock()
         inner = MagicMock()
 
-        def fake_enter():
-            if hook_payloads is not None:
-                for payload in hook_payloads:
-                    for hook in opts.get('progress_hooks', []):
-                        hook(payload)
-            return inner
-
         def fake_download(urls):
             if raises:
                 raise raises
+            for payload in (hook_payloads or []):
+                for hook in opts.get('progress_hooks', []):
+                    hook(payload)
             return 0
 
         inner.download = fake_download
-        cm.__enter__ = MagicMock(side_effect=lambda: fake_enter())
+        cm.__enter__ = MagicMock(return_value=inner)
         cm.__exit__ = MagicMock(return_value=False)
         return cm
 
@@ -195,7 +191,6 @@ def test_main_calls_set_metadata_on_download(mock_set_metadata, mock_download_tr
 
     with patch('sys.argv', ['soundcloud_dl.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path)]):
-        from soundcloud_dl import main
         main()
 
     mock_set_metadata.assert_called_once_with(mp3, mp3.with_suffix('.info.json'))
@@ -208,7 +203,6 @@ def test_main_skipped_does_not_call_set_metadata(mock_set_metadata, mock_downloa
 
     with patch('sys.argv', ['soundcloud_dl.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path)]):
-        from soundcloud_dl import main
         main()
 
     mock_set_metadata.assert_not_called()
@@ -220,7 +214,6 @@ def test_main_all_failed_exits_one(mock_download_track, tmp_path):
 
     with patch('sys.argv', ['soundcloud_dl.py', 'https://soundcloud.com/a/t',
                             '--output', str(tmp_path)]):
-        from soundcloud_dl import main
         with pytest.raises(SystemExit) as exc:
             main()
         assert exc.value.code == 1
@@ -242,5 +235,4 @@ def test_main_partial_failure_exits_zero(mock_set_metadata, mock_download_track,
                             'https://soundcloud.com/a/1',
                             'https://soundcloud.com/a/2',
                             '--output', str(tmp_path)]):
-        from soundcloud_dl import main
         main()  # must not raise — partial success = exit 0
