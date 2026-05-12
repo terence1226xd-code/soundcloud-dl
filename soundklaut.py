@@ -9,6 +9,15 @@ from mutagen.mp3 import MP3 as MutagenMP3
 from pydub import AudioSegment
 from pydub.silence import detect_leading_silence
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+    TransferSpeedColumn,
+)
 
 console = Console()
 
@@ -114,6 +123,21 @@ def download_track(url, output_dir, archive_path, allow_playlist=False, progress
     return ('downloaded', mp3_path, total_bytes_seen[0])
 
 
+def _short_url(url):
+    parts = url.rstrip('/').split('/')
+    return '/'.join(parts[-2:]) if len(parts) >= 2 else url
+
+
+def _format_bytes(n):
+    if n is None:
+        return ''
+    for unit in ('B', 'KB', 'MB', 'GB'):
+        if n < 1024:
+            return f'{n:.1f} {unit}'
+        n /= 1024
+    return f'{n:.1f} GB'
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Download SoundCloud tracks as MP3',
@@ -142,17 +166,53 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     archive_path = output_dir / 'downloaded.txt'
     allow_playlist = args.playlist is not None
+    n = len(urls)
+
+    console.print(
+        f"\n [bold cyan]soundklaut[/]  ·  "
+        f"{n} track{'s' if n != 1 else ''}  →  [dim]{output_dir}[/]\n"
+    )
 
     downloaded = skipped = failed = 0
 
-    console.print(f"[bold]Downloading {len(urls)} URL(s) → {output_dir}[/]\n")
+    for i, url in enumerate(urls):
+        track_name = _short_url(url)
+        file_size = None
 
-    for url in urls:
-        status, result, _total_bytes = download_track(url, output_dir, archive_path, allow_playlist)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+            transient=True,
+            console=console,
+        ) as progress:
+            task = progress.add_task(
+                f"  [{i + 1}/{n}]  {track_name}", total=None
+            )
+
+            def on_progress(downloaded_bytes, total_bytes, filename,
+                            _task=task, _progress=progress, _idx=i):
+                nonlocal track_name, file_size
+                if filename:
+                    name = Path(filename).stem
+                    if name != track_name:
+                        track_name = name
+                        _progress.update(
+                            _task,
+                            description=f"  [{_idx + 1}/{n}]  {track_name}",
+                        )
+                _progress.update(_task, completed=downloaded_bytes, total=total_bytes)
+                file_size = total_bytes
+
+            status, result, total = download_track(
+                url, output_dir, archive_path, allow_playlist,
+                progress_callback=on_progress,
+            )
 
         if status == 'downloaded':
-            info_json = result.with_suffix('.info.json')
-
             trim_note = ''
             if not args.no_trim:
                 try:
@@ -162,27 +222,42 @@ def main():
                         min_silence_len=2000,
                     )
                     if trimmed:
-                        trim_note = f' [dim](trimmed {secs:.1f}s silence)[/]'
+                        trim_note = f'  [dim](trimmed {secs:.1f}s)[/]'
                 except Exception as e:
-                    console.print(f"  [yellow]⚠[/] trim failed: {e}")
+                    console.print(f"  [yellow]⚠[/]  trim failed: {e}")
 
+            info_json = result.with_suffix('.info.json')
             if info_json.exists():
                 try:
                     set_metadata(result, info_json)
                 except Exception as e:
-                    console.print(f"  [yellow]⚠[/] {result.stem}  [dim](metadata failed: {e})[/]")
+                    console.print(
+                        f"  [yellow]⚠[/]  {result.stem}  [dim](metadata failed: {e})[/]"
+                    )
 
-            console.print(f"  [green]✓[/] {result.stem}{trim_note}")
+            size_str = (
+                f'  [dim]{_format_bytes(total or file_size)}[/]'
+                if (total or file_size) else ''
+            )
+            console.print(f"  [green]✓[/]  {track_name}{trim_note}{size_str}")
             downloaded += 1
+
         elif status == 'skipped':
-            console.print(f"  [yellow]⏭[/] {url}  [dim](already downloaded)[/]")
+            console.print(
+                f"  [yellow]⏭[/]  {track_name}  [dim]already downloaded[/]"
+            )
             skipped += 1
+
         else:
-            console.print(f"  [red]✗[/] {url}  [dim]{result}[/]")
+            console.print(f"  [red]✗[/]  {track_name}  [dim]{result}[/]")
             failed += 1
 
+    console.print()
+    console.rule(style='dim')
     console.print(
-        f"\n[bold]Done:[/] {downloaded} downloaded, {skipped} skipped, {failed} failed"
+        f"  [bold]{downloaded}[/] downloaded · "
+        f"[bold]{skipped}[/] skipped · "
+        f"[bold]{failed}[/] failed\n"
     )
 
     if downloaded == 0 and failed > 0:
