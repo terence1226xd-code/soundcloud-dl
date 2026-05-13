@@ -1,3 +1,6 @@
+import ctypes
+import ctypes.util
+import sys
 import threading
 from pathlib import Path
 from tkinter import filedialog
@@ -10,9 +13,35 @@ ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
 
 
+def _macos_activate():
+    """Bring the Python process to the foreground after Tkinter has initialized NSApplication."""
+    try:
+        libobjc = ctypes.CDLL(ctypes.util.find_library("objc"))
+        libobjc.objc_getClass.restype = ctypes.c_void_p
+        libobjc.sel_registerName.restype = ctypes.c_void_p
+        libobjc.objc_msgSend.restype = ctypes.c_void_p
+        libobjc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        nsapp = libobjc.objc_msgSend(
+            ctypes.c_void_p(libobjc.objc_getClass(b"NSApplication")),
+            ctypes.c_void_p(libobjc.sel_registerName(b"sharedApplication")),
+        )
+        activate = ctypes.CFUNCTYPE(
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_bool
+        )(ctypes.cast(libobjc.objc_msgSend, ctypes.c_void_p))
+        activate(
+            nsapp,
+            ctypes.c_void_p(libobjc.sel_registerName(b"activateIgnoringOtherApps:")),
+            True,
+        )
+    except Exception:
+        pass
+
+
 class SoundklautApp(ctk.CTk):
     def __init__(self):
-        super().__init__()
+        super().__init__()  # Tkinter initialises NSApplication here
+        if sys.platform == "darwin":
+            _macos_activate()  # bring to front AFTER NSApp exists
         self.title("soundklaut")
         self.geometry("620x720")
         self.resizable(True, True)
