@@ -1,0 +1,17 @@
+#!/bin/bash
+# Resolve the soundcloud-dl directory (3 levels up from Contents/MacOS/)
+APP_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+cd "$APP_DIR"
+
+# Try common Python 3 locations
+for PYTHON in \
+    /opt/homebrew/bin/python3 \
+    /usr/local/bin/python3 \
+    /usr/bin/python3 \
+    python3; do
+    if "$PYTHON" -c "import sys" &>/dev/null 2>&1; then
+        exec "$PYTHON" soundklaut_gui.py
+    fi
+done
+
+osascript -e 'display alert "Python 3 nicht gefunden" message "Bitte Python 3 installieren und customtkinter mit: pip3 install customtkinter"'
