@@ -1,0 +1,13 @@
+yt-dlp>=2024.1.1
+requests>=2.31.0
+sounddevice>=0.4.6
+numpy>=1.24.0
+mutagen>=1.47.0
+rich>=13.7.0
+pytest>=8.0.0
+pydub>=0.25.1
+customtkinter>=5.2.0
+spotdl>=4.2.0
+imageio-ffmpeg>=0.4.9
+pyinstaller>=6.0.0
+pyinstaller-hooks-contrib>=2024.1

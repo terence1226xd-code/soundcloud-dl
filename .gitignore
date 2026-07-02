@@ -1,0 +1,15 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# secrets / session state — never commit
+cookies.txt
+soundklaut_launch.log
+
+# build artifacts
+build/
+dist/
+*.zip
+
+# local download state
+downloads/
